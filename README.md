@@ -1,1 +1,1 @@
-# Intel-Vector-Data-Streaming-Library
+# Intel® Vector Data Streaming Library
