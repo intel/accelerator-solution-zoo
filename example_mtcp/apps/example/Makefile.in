@@ -1,0 +1,119 @@
+# TODO: Make this Makefile.in pretty
+
+TARGETS = epserver epwget
+CC=@CC@ -g -O3 -Wall -Werror -fgnu89-inline
+DPDK=@DPDK@
+PS=@PSIO@
+NETMAP=@NETMAP@
+ONVM=@ONVM@
+CCP=@CCP@
+CFLAGS=@CFLAGS@
+
+# Add arch-specific optimization
+ifeq ($(shell uname -m),x86_64)
+LIBS += -m64
+endif
+
+# mtcp library and header 
+MTCP_FLD    =../../mtcp/
+MTCP_INC    =-I${MTCP_FLD}/include
+MTCP_LIB    =-L${MTCP_FLD}/lib
+MTCP_TARGET = ${MTCP_LIB}/libmtcp.a
+
+UTIL_FLD = ../../util
+UTIL_INC = -I${UTIL_FLD}/include
+UTIL_OBJ = ${UTIL_FLD}/http_parsing.o ${UTIL_FLD}/tdate_parse.o ${UTIL_FLD}/netlib.o
+
+DSA_FLD = ../../../dsa_userlib
+DSA_INC = -I${DSA_FLD}/include
+DSA_LIB=${DSA_FLD}/build/lib
+LIBS += -L${DSA_LIB} -lvector_data_streaming
+
+
+# util library and header
+INC = -I./include/ ${UTIL_INC} ${MTCP_INC} -I${UTIL_FLD}/include -I${MTCP_FLD}/src/include
+LIBS = ${MTCP_LIB}
+
+# psio-specific variables
+ifeq ($(PS),1)
+PS_DIR = ../../io_engine/
+PS_INC = ${PS_DIR}/include
+INC += -I{PS_INC}
+LIBS += -lmtcp -L${PS_DIR}/lib -lps -lpthread -lnuma -lrt
+endif
+
+# netmap-specific variables
+ifeq ($(NETMAP),1)
+LIBS += -lmtcp -lpthread -lnuma -lrt
+endif
+
+# dpdk-specific variables
+ifeq ($(DPDK),1)
+
+PKGCONF ?= pkg-config
+CFLAGS += $(shell $(PKGCONF) --cflags libdpdk)
+LIBS += $(shell $(PKGCONF) --static --libs libdpdk)
+LIBS += -g -O3 -lpthread -lrt ${MTCP_FLD}/lib/libmtcp.a -lnuma -lmtcp -ldl -lgmp
+
+endif
+
+# onvm-specific variables
+ifeq ($(ONVM),1)
+ifeq ($(RTE_TARGET),)
+$(error "Please define RTE_TARGET environment variable")
+endif
+
+INC += -I@ONVMLIBPATH@/onvm_nflib
+INC += -I@ONVMLIBPATH@/lib
+INC += -DENABLE_ONVM
+LIBS += @ONVMLIBPATH@/onvm_nflib/$(RTE_TARGET)/libonvm.a
+LIBS += @ONVMLIBPATH@/lib/$(RTE_TARGET)/lib/libonvmhelper.a -lm
+endif
+
+ifeq ($V,) # no echo
+	export MSG=@echo
+	export HIDE=@
+else
+	export MSG=@\#
+	export HIDE=
+endif
+
+ifeq ($(CCP), 1)
+# LIBCCP
+LIBCCP = $(MTCP_FLD)/src/libccp
+LIBS += -L$(LIBCCP) -lccp -lstartccp
+INC += -I$(LIBCCP)
+endif
+
+all: epserver epwget epping
+
+epserver.o: epserver.c
+	$(MSG) "   CC $<"
+	$(HIDE) ${CC} -c $< ${CFLAGS} ${INC}
+
+epserver: epserver.o ${MTCP_FLD}/lib/libmtcp.a
+	$(MSG) "   LD $<"
+	$(HIDE) ${CC} $< ${LIBS} ${UTIL_OBJ} -o $@
+
+epwget.o: epwget.c
+	$(MSG) "   CC $<"
+	$(HIDE) ${CC} -c $< ${CFLAGS} ${INC}
+
+epwget: epwget.o ${MTCP_FLD}/lib/libmtcp.a
+	$(MSG) "   LD $<"
+	$(HIDE) ${CC} $< ${LIBS} ${UTIL_OBJ} -o $@
+
+epping.o: epping.c
+	$(MSG) "   CC $<"
+	$(HIDE) ${CC} -c $< ${CFLAGS} ${INC}
+
+epping: epping.o ${MTCP_FLD}/lib/libmtcp.a
+	$(MSG) "   LD $<"
+	$(HIDE) ${CC} $< ${LIBS} ${UTIL_OBJ} -o $@
+
+clean:
+	$(MSG) "   CLEAN $(TARGETS)"
+	$(HIDE) rm -f *~ *.o ${TARGETS} log_*
+
+distclean: clean
+	rm -rf Makefile

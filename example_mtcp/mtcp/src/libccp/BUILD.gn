@@ -1,0 +1,13 @@
+static_library("libccp") {
+    sources = ["ccp.c",
+                "machine.c",
+                "serialize.c",
+                "ccp_priv.c",
+    ]
+    cflags= ["-fPIC",
+             "-Wall",
+             "-Wextra",
+             "-O2",
+            "-g"
+            ]
+}
