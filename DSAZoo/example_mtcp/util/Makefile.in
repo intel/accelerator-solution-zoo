@@ -1,0 +1,43 @@
+### GCC ###
+GCC=@CC@
+
+ifeq ($(shell uname -m),x86_64)
+GCC_OPT = -m64
+else
+GCC_OPT =
+endif
+GCC_OPT += -Wall -fPIC -c
+GCC_OPT += -DNDEBUG -O3 -DNETSTAT -DINFO -DDBGERR -DDBGCERR
+
+
+### LIBRARIES AND INCLUDES ###
+CFLAGS = -I./include/
+
+### SOURCE CODE ###
+SRCS = tdate_parse.c http_parsing.c netlib.c
+
+OBJS = $(patsubst %.c,%.o,$(SRCS))
+
+ifeq ($V,) # no echo
+	export MSG=@echo
+	export HIDE=@
+else
+	export MSG=@\#
+	export HIDE=
+endif
+
+### COMPILE ###
+all: default
+
+default: $(OBJS)
+
+$(OBJS): %.o: %.c Makefile
+	$(MSG) "   CC $<"
+	$(HIDE) ${CC} ${GCC_OPT} ${CFLAGS} $<
+
+clean:
+	$(MSG) "   CC *.o"
+	$(HIDE) rm -rf *~ *.o
+
+distclean: clean
+	rm -f Makefile

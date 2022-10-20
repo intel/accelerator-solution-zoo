@@ -1,0 +1,14 @@
+1 Build libary:
+1.1 Go into dsa_userlib directory.
+1.2 Use mkdir command to create a new directory such as named with "build" for building.
+1.3 Go into build directory, and run "cmake .." to generate building files such as Makefile.
+1.4 Run "make" command to build the library.
+
+2 Build example(user space network protocol mTCP)
+2.1 Go into example_mtcp directory
+2.2 Run script pre_dpdk2203.sh to git clone dpdk v22.03, and then build and install it, command like: ./pre_dpdk2203.sh ~/dpdk2203
+2.3 Run script pre_compile.sh to prepare the environment before you building this project: ./pre_compile.sh
+2.4 Set environments
+	export PKG_CONFIG_PATH=${PKG_CONFIG_PATH}:~/dpdk2203/lib64/pkgconfig
+	export LD_LIBRARY_PATH=${LD_LIBRARY_PATH}:~/dpdk2203/lib64
+2.5 Run make command to build the mtcp and sample workload epping.

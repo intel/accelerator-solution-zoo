@@ -1,0 +1,25 @@
+language: rust
+rust:
+    - nightly
+cache: cargo
+os:
+    - linux
+    - osx
+addons:
+    apt:
+        sources:
+            - ubuntu-toolchain-r-test
+        packages:
+            - g++-6
+            - llvm-dev
+            - libclang-dev
+            - clang
+
+matrix:
+    # works on Precise and Trusty
+    - os: linux
+      env:
+        - MATRIX_EVAL="CC=gcc-6 && CXX=g++-6"
+script:
+    - make
+    - python3 integration_test.py
