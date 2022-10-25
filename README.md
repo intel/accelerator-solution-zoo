@@ -4,3 +4,8 @@ Intel Vector Data Streaming Library is a zoo of solutions based on accelerators 
 ![](Intel-Sapphire-Rapids-accelerators.jpg)
 To expound how to utilize each powerful accelerator, we provide reference solutions.
 #  Solution List
+- DSA
+##User space network acceleration with DSA.
+- IAA
+- DLB
+- QAT 
