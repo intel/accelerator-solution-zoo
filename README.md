@@ -1,5 +1,6 @@
 # Intel® Vector Data Streaming Library
 ![](intel-accelerator-zoo.jpeg)
-    The project is to propagate the usage to illustrate vector data streaming with DSA (Data Streaming Accelerator) feature introduced in the Intel® Sapphire Rapids platform. It provides an effective data manipulation to demonstrate data move and transforms which can be used by networking, service mesh, message queue, or image distribution.
-    Here we provide a reference example to use our library in user space network implementation mTCP. The users can use this library into their own network protocal stack.
-
+Intel Vector Data Streaming Library is a zoo of solutions based on accelerators in the die of Intel 4th Xeon Scalable processor,code-named [“Sapphire Rapids”](https://www.intel.com/content/www/us/en/newsroom/opinion/updates-next-gen-data-center-platform-sapphire-rapids.html?wapkw=Intel%20Sapphire%20Rapids%20Demos%20At%20Innovation%202022#gs.g4fsrh). Intel provide a boundle of powerful accelerators for different scenarios as below table.
+![](Intel-Sapphire-Rapids-accelerators.jpg)
+To expound how to utilize each powerful accelerator, we provide reference solutions.
+#  Solution List

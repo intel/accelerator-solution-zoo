@@ -1,2 +1,4 @@
 # Intel DSA Zoo
-
+Intel DSA(Data streaming accelerator), [specification link](https://www.intel.com/content/www/us/en/content-details/671116/intel-data-streaming-accelerator-architecture-specification.html?wapkw=data%20streaming%20accelerator%20specification),DSA is a high-performance data copy and transformation accelerator that will be integrated in future Intel® processors, targeted for optimizing streaming data movement and transformation operations common with applications for high-performance storage, networking, persistent memory, and various data processing applications.
+The project is to propagate the usage to illustrate vector data streaming with DSA (Data Streaming Accelerator) feature introduced in the Intel® Sapphire Rapids platform. It provides an effective data manipulation to demonstrate data move and transforms which can be used by networking, service mesh, message queue, or image distribution.
+Here we provide a reference example to use our library in user space network implementation mTCP. The users can use this library into their own network protocal stack.
