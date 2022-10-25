@@ -9,11 +9,12 @@ Intel Vector Data Streaming Library is a zoo of solutions based on accelerators 
 |Intel In-memory Analytics(IAA)       | Data compression/decompression acceleration |IAAZoo           |                             |                                       |
 |Intel QuickAssist Technology(QAT)    | compression/decompression/Crypto acceleraion|QATZoo           |                             |                                       |
 |Intel Data Load Balance(DLB)         |                                             |DLBZoo           |                             |                                       |    
+
 Picture for referencing![](Intel-Sapphire-Rapids-accelerators.jpg)
 
 To expound how to utilize each powerful accelerator, we provide reference solutions.
 #  Solution List
-- DSA
+- DSA  
   User space network acceleration with DSA.
 - IAA
 - DLB
