@@ -10,7 +10,8 @@ Intel Vector Data Streaming Library is a zoo of solutions based on accelerators 
 |Intel QuickAssist Technology(QAT)    | compression/decompression/Crypto acceleraion|QATZoo           |                             |                                       |
 |Intel Data Load Balance(DLB)         |                                             |DLBZoo           |                             |                                       |    
 
-Picture for referencing![](Intel-Sapphire-Rapids-accelerators.jpg)
+Picture for referencing(To be updated, need source material input):  
+![](Intel-Sapphire-Rapids-accelerators.jpg)
 
 To expound how to utilize each powerful accelerator, we provide reference solutions.
 #  Solution List
