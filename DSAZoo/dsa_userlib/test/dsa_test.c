@@ -111,6 +111,7 @@ int main(int argc, char *argv[])
 	int rc = 0;
 	unsigned long buf_size = DSA_TEST_SIZE;
 	int wq_type = SHARED;
+	int dev_id = -1, wq_id = -1; 
 	int opcode = DSA_OPCODE_MEMMOVE;
 	int bopcode = DSA_OPCODE_MEMMOVE;
 	int tflags = TEST_FLAGS_BOF;
@@ -118,10 +119,16 @@ int main(int argc, char *argv[])
 	unsigned int bsize = 0;
 	unsigned long start, end;
 
-	while ((opt = getopt(argc, argv, "w:l:f:o:b:c:t:p:vh")) != -1) {
+	while ((opt = getopt(argc, argv, "w:d:q:l:f:o:b:c:t:p:vh")) != -1) {
 		switch (opt) {
 		case 'w':
 			wq_type = atoi(optarg);
+			break;
+		case 'd':
+			dev_id = atoi(optarg);
+			break;
+		case 'q':
+			wq_id = atoi(optarg);
 			break;
 		case 'l':
 			buf_size = strtoul(optarg, NULL, 0);
@@ -157,7 +164,7 @@ int main(int argc, char *argv[])
 	if (dsa == NULL)
 		return -ENOMEM;
 
-	rc = dsa_alloc(dsa, wq_type);
+	rc = dsa_alloc_raw(dsa, dev_id, wq_id, wq_type);
 	if (rc < 0)
 		return -ENOMEM;
 

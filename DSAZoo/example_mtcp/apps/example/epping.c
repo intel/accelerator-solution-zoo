@@ -80,6 +80,8 @@ static int read_cpu = 5;
 static int virtq_cpu = 6;
 static int write_cpu = 7; //write application run on cpu 7
 extern int use_dsa;
+extern int unpacking_dsa;
+extern int unpacking_size;
 static int nb_bufs = 128; //data chunk number
 static int sleep_us = 0;
 static uint64_t buf_size = 1048576; //data chunk size
@@ -753,7 +755,7 @@ int main(int argc, char **argv)
 	num_cores = GetNumCPUs();
 	core_limit = num_cores;
 
-	while (-1 != (o = getopt(argc, argv, "u:l:n:f:c:p:s:dh")))
+	while (-1 != (o = getopt(argc, argv, "u:l:n:f:c:p:s:d::m:h")))
 	{
 		switch (o)
 		{
@@ -781,6 +783,14 @@ int main(int argc, char **argv)
 			break;
 		case 'd': //use dsa
 			use_dsa = 1;
+			if(optarg != NULL && (strcmp("u",optarg) == 0 || strcmp("unpacking",optarg) == 0)) //use dsa unpacking
+			{
+				printf("The argument of -d is %s\n\n", optarg);
+				unpacking_dsa = 1;
+			}
+			break;
+		case 'm':
+			unpacking_size = atoi(optarg);
 			break;
 		case 'h':
 			printHelp(argv[0]);

@@ -4,6 +4,8 @@
 #include "mtcp.h"
 #include "tcp_stream.h"
 
+#define UNPACKING_SIZE 8192
+
 enum ack_opt
 {
 	ACK_OPT_NOW, 

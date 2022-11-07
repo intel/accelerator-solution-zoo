@@ -220,7 +220,9 @@ SendTCPPacketStandalone(struct mtcp_manager *mtcp,
 	return payloadlen;
 }
 /*----------------------------------------------------------------------------*/
-int
+int unpacking_dsa = 0;
+int unpacking_size = UNPACKING_SIZE; 
+
 SendTCPPacket(struct mtcp_manager *mtcp, tcp_stream *cur_stream, 
 		uint32_t cur_ts, uint8_t flags, uint8_t *payload, uint16_t payloadlen)
 {
@@ -314,7 +316,10 @@ SendTCPPacket(struct mtcp_manager *mtcp, tcp_stream *cur_stream,
 	tcph->doff = (TCP_HEADER_LEN + optlen) >> 2;
 	// copy payload if exist
 	if (payloadlen > 0) {
-		memcpy((uint8_t *)tcph + TCP_HEADER_LEN + optlen, payload, payloadlen);
+		if(unpacking_dsa)
+			dsa_memcpy_vector_async_submit(cur_stream->mctx->dsa, payload, (uint8_t *)tcph + TCP_HEADER_LEN + optlen, payloadlen);
+		else
+			memcpy((uint8_t *)tcph + TCP_HEADER_LEN + optlen, payload, payloadlen);
 #if defined(NETSTAT) && defined(ENABLELRO)
 		mtcp->nstat.tx_gdptbytes += payloadlen;
 #endif /* NETSTAT */
@@ -481,7 +486,10 @@ FlushTCPSendingBuffer(mtcp_manager_t mtcp, tcp_stream *cur_stream, uint32_t cur_
 		packets = 0;
 		goto out;
 	}
-	
+
+	unsigned long start, end;
+	static int poll_cnt = 0;
+	start  = rdtsc();
 	while (1) {
 #if USE_CCP
 		if (sndvar->missing_seq) {
@@ -544,6 +552,7 @@ FlushTCPSendingBuffer(mtcp_manager_t mtcp, tcp_stream *cur_stream, uint32_t cur_
 
 		remaining_window = MIN(sndvar->cwnd, sndvar->peer_wnd)
 			               - (seq - sndvar->snd_una);
+		//remaining_window = unpacking_size;
 		remaining_window = 8192;
 		/* if there is no space in the window */
 		if (remaining_window <= 0 ||
@@ -565,7 +574,7 @@ FlushTCPSendingBuffer(mtcp_manager_t mtcp, tcp_stream *cur_stream, uint32_t cur_
 		}
 		
 		/* payload size limited by remaining window space */
-		len = MIN(len, remaining_window);
+		len = MIN(len, unpacking_size);
 		/* payload size limited by TCP MSS */
 		pkt_len = MIN(len, sndvar->mss - CalculateOptionLength(TCP_FLAG_ACK));
 
@@ -596,6 +605,10 @@ FlushTCPSendingBuffer(mtcp_manager_t mtcp, tcp_stream *cur_stream, uint32_t cur_
 		if ((sndlen = SendTCPPacket(mtcp, cur_stream, cur_ts,
 					    TCP_FLAG_ACK, data, pkt_len)) < 0) {
 			/* there is no available tx buf */
+	               if(poll_cnt % 10000 == 0) {
+        	               printf("unpacking %d packets\n", packets);
+        	       	}
+
 			packets = -3;
 			goto out;
 		}
@@ -610,6 +623,19 @@ FlushTCPSendingBuffer(mtcp_manager_t mtcp, tcp_stream *cur_stream, uint32_t cur_
 	}
 
  out:
+	if(unpacking_dsa)
+	{
+		if(dsa_wait_memcpy_vector_async(cur_stream->mctx->dsa) != DSA_STATUS_OK)
+			printf("dsa memcpy vector async failed\n");
+	}
+	end = rdtsc();
+	if(poll_cnt++ % 10000 == 0) {
+		if(unpacking_dsa)
+			printf("dsa unpacking cost cycle : %ld \n", end - start);
+		else
+			printf("cpu unpacking cost cycle : %ld \n", end - start);
+	}
+
 	SBUF_UNLOCK(&sndvar->write_lock);	
 	return packets;	
 #endif

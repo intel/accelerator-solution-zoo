@@ -110,7 +110,8 @@ struct dsa_context {
 		struct task *single_task;
 		struct batch_task *batch_task;
 	};
-
+	
+	int task_nb;
 	struct task *tasks[128];
 	
 
@@ -235,6 +236,7 @@ int dsa_enqcmd(struct dsa_context *ctx, struct dsa_hw_desc *hw);
 
 struct dsa_context *dsa_init(void);
 int dsa_alloc(struct dsa_context *ctx, int shared);
+int dsa_alloc_raw(struct dsa_context *ctx, int dev_id, int wq_id, int shared);
 int alloc_task(struct dsa_context *ctx);
 struct task *__alloc_task(void);
 int init_task(struct task *tsk, int tflags, int opcode,
@@ -265,7 +267,7 @@ int dsa_dualcast(struct dsa_context *ctx);
 int dsa_wait_dualcast(struct dsa_context *ctx);
 
 void dsa_prep_memcpy(struct task *tsk);
-void dsa_reprep_memcpy(struct dsa_context *ctx);
+void dsa_reprep_memcpy(struct dsa_context *ctx, struct  task *tsk);
 void dsa_prep_memfill(struct task *tsk);
 void dsa_reprep_memfill(struct dsa_context *ctx);
 void dsa_prep_compare(struct task *tsk);
@@ -309,6 +311,8 @@ void free_batch_task(struct batch_task *btsk);
 void dsa_prep_desc_common(struct dsa_hw_desc *hw, char opcode,
 		uint64_t dest, uint64_t src, size_t len, unsigned long dflags);
 void dsa_desc_submit(struct dsa_context *ctx, struct dsa_hw_desc *hw);
+int dsa_memcpy_vector_async_submit(struct dsa_context *ctx, void *src, void *dst, uint64_t len);
+int dsa_wait_memcpy_vector_async(struct dsa_context *ctx);
 int alloc_thread_stasks(struct dsa_context *ctx, int cpuid);
 int dsa_memcpy_async_submit1(struct percpu_tasks *ppt, void *src, void *dst, uint64_t len);
 int dsa_memcpy_async_submit_vector(struct percpu_tasks *ppt, unsigned char **src_arr, unsigned char **dst_arr,int nb_bufs, int buf_len);

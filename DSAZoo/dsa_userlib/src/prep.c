@@ -38,10 +38,10 @@ void dsa_prep_memcpy(struct task *tsk)
 	tsk->comp->status = 0;
 }
 
-void dsa_reprep_memcpy(struct dsa_context *ctx)
+void dsa_reprep_memcpy(struct dsa_context *ctx, struct task *tsk)
 {
-	struct dsa_completion_record *compl = ctx->single_task->comp;
-	struct dsa_hw_desc *hw = ctx->single_task->desc;
+	struct dsa_completion_record *compl = tsk->comp;
+	struct dsa_hw_desc *hw = tsk->desc;
 	/*
 	info("PF addr %#lx dir %d bc %#x\n",
 			compl->fault_addr, compl->result,

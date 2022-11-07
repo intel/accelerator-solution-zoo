@@ -131,7 +131,7 @@ static int dsa_setup_wq(struct dsa_context *ctx, struct accfg_wq *wq)
 }
 
 static struct accfg_wq *dsa_get_wq(struct dsa_context *ctx,
-		int dev_id, int shared)
+		int dev_id, int wq_id, int shared)
 {
 	struct accfg_device *device;
 	struct accfg_wq *wq;
@@ -154,6 +154,9 @@ static struct accfg_wq *dsa_get_wq(struct dsa_context *ctx,
 			enum accfg_wq_state wstate;
 			enum accfg_wq_mode mode;
 			enum accfg_wq_type type;
+
+			if (wq_id != accfg_wq_get_id(wq) && wq_id != -1)
+				continue;
 
 			/* Get a workqueue that's enabled */
 			wstate = accfg_wq_get_state(wq);
@@ -190,7 +193,13 @@ static uint32_t bsr(uint32_t val)
 	return msb - 1;
 }
 
+
 int dsa_alloc(struct dsa_context *ctx, int shared)
+{
+	return dsa_alloc_raw(ctx, -1, -1, shared);
+}
+
+int dsa_alloc_raw(struct dsa_context *ctx, int dev_id, int wq_id, int shared)
 {
 	struct accfg_device *dev;
 
@@ -198,7 +207,7 @@ int dsa_alloc(struct dsa_context *ctx, int shared)
 	if (ctx->wq_reg)
 		return 0;
 
-	ctx->wq = dsa_get_wq(ctx, -1, shared);
+	ctx->wq = dsa_get_wq(ctx, dev_id, wq_id, shared);
 	if (!ctx->wq) {
 		err("No usable wq found\n");
 		return -ENODEV;
@@ -217,8 +226,9 @@ int dsa_alloc(struct dsa_context *ctx, int shared)
 	ctx->max_xfer_size = accfg_device_get_max_transfer_size(dev);
 	ctx->max_xfer_bits = bsr(ctx->max_xfer_size);
 
-	info("alloc wq %d shared %d size %d addr %p batch sz %#x xfer sz %#x\n",
-			ctx->wq_idx, shared, ctx->wq_size, ctx->wq_reg,
+	info("alloc device %s shared %d size %d addr %p batch sz %#x xfer sz %#x\n",
+			accfg_wq_get_devname(ctx->wq),
+			shared, ctx->wq_size, ctx->wq_reg,
 			ctx->max_batch_size, ctx->max_xfer_size);
 
 	return 0;
@@ -232,6 +242,17 @@ int alloc_task(struct dsa_context *ctx)
 
 	dbg("single task allocated, desc %#lx comp %#lx\n",
 			ctx->single_task->desc, ctx->single_task->comp);
+
+        int i;
+        for(i=0; i<128; i++) {
+                ctx->tasks[i] = __alloc_task();
+                if (!ctx->tasks[i])
+                        return -ENOMEM;
+
+                dbg("tasks %d allocated, desc %#lx comp %#lx\n",
+                                i, ctx->tasks[i]->desc, ctx->tasks[i]->comp);
+        }
+
 
 	return DSA_STATUS_OK;
 }
@@ -631,10 +652,6 @@ void __clean_task(struct task *tsk)
 
 	free(tsk->desc);
 	free(tsk->comp);
-	free(tsk->src1);
-	free(tsk->src2);
-	free(tsk->dst1);
-	free(tsk->dst2);
 }
 
 void free_batch_task(struct batch_task *btsk)
@@ -698,7 +715,7 @@ again:
 	/* re-submit if PAGE_FAULT reported by HW && BOF is off */
 	if (stat_val(comp->status) == DSA_COMP_PAGE_FAULT_NOBOF &&
 			!(desc->flags & IDXD_OP_FLAG_BOF)) {
-		dsa_reprep_memcpy(ctx);
+		dsa_reprep_memcpy(ctx, ctx->single_task);
 		goto again;
 	}
 
@@ -924,7 +941,7 @@ int memcpy_decision(bool dma, uint32_t nb_bufs,
 	}
 }
 
-int dsa_memcpy_vector_async_submit(struct dsa_context *ctx, void *src, void *dst, uint64_t len, uint32_t task_nb)
+int dsa_memcpy_vector_async_submit(struct dsa_context *ctx, void *src, void *dst, uint64_t len)
 {
 	struct task *tsk = NULL;
 
@@ -938,9 +955,15 @@ int dsa_memcpy_vector_async_submit(struct dsa_context *ctx, void *src, void *dst
 		return -1;
 	}
 
-	tsk = ctx->tasks[task_nb];
+        if(ctx->task_nb > 127) {
+                printf("task nb overflow");
+                return -1;
+        }
+
+        tsk = ctx->tasks[ctx->task_nb];
+
 	if(tsk == NULL) {
-		printf("alloc task for ctx first!\n");
+		printf("alloc task for ctx first! task nb :%d\n", ctx->task_nb);
 		return -1;
 	}
 	tsk->opcode = DSA_OPCODE_MEMMOVE;
@@ -955,6 +978,7 @@ int dsa_memcpy_vector_async_submit(struct dsa_context *ctx, void *src, void *dst
 
 	dsa_desc_submit(ctx, tsk->desc);
 
+	ctx->task_nb++;
 	return 0;
 
 }
@@ -1226,6 +1250,28 @@ int dsa_wait_memcpy_async(struct dsa_context *ctx)
 		return DSA_STATUS_FAIL;
 	
 	return DSA_STATUS_RETRY;	
+}
+
+int dsa_wait_memcpy_vector_async(struct dsa_context *ctx)
+{
+        uint32_t j;
+        int lcnt = 0;
+        for (j = 0; j < ctx->task_nb; ++j) {
+again:
+                while (!ctx->tasks[j]->comp->status && ++lcnt < MAX_COMP_RETRY);
+                if (lcnt >= MAX_COMP_RETRY){
+                        ctx->task_nb = 0;
+                        return DSA_STATUS_FAIL;
+                }
+                lcnt = 0;
+                if (stat_val(ctx->tasks[j]->comp->status) == DSA_COMP_PAGE_FAULT_NOBOF &&
+                                !(ctx->tasks[j]->desc->flags & IDXD_OP_FLAG_BOF)) {
+                        dsa_reprep_memcpy(ctx, ctx->tasks[j]);
+                        goto again;
+                }
+        }
+        ctx->task_nb = 0;
+        return DSA_STATUS_OK;
 }
 
 //for batch memcpy copy

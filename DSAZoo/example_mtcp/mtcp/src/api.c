@@ -615,6 +615,7 @@ mtcp_accept(mctx_t mctx, int sockid, struct sockaddr *addr, socklen_t *addrlen)
 		}
 		socket->stream = accepted;
 		accepted->socket = socket;
+		accepted->mctx = mctx;
 
 		/* set socket parameters */
 		socket->saddr.sin_family = AF_INET;
@@ -1769,6 +1770,7 @@ mtcp_write(mctx_t mctx, int sockid, const char *buf, size_t len)
 		}
 	}
 
+	cur_stream->mctx = mctx;
 	sndvar = cur_stream->sndvar;
 
 	SBUF_LOCK(&sndvar->write_lock);
@@ -1973,6 +1975,7 @@ mtcp_write_async(mctx_t mctx, int sockid, const char *buf, size_t len)
 		}
 	}
 
+	cur_stream->mctx = mctx;
 	sndvar = cur_stream->sndvar;
 
 	SBUF_LOCK(&sndvar->write_lock);

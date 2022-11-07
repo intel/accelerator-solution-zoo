@@ -211,7 +211,7 @@ typedef struct tcp_stream
 #endif
 	
 	uint32_t last_active_ts;		/* ts_last_ack_sent or ts_last_ts_upd */
-
+	mctx_t mctx;
 } tcp_stream;
 
 extern inline char *

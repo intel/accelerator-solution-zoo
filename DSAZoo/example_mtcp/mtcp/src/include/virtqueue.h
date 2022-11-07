@@ -36,7 +36,7 @@ struct virtqueue {
 	unsigned int vq_ring_size;
 	uint16_t mbuf_addr_offset;
 
-	rte_iova_t vq_ring_mem; /**< physical address of vring,
+uint64_t vq_ring_mem; /*
 	                         * or virtual address for virtio_user. */
 
 	uint16_t  *notify_addr;
