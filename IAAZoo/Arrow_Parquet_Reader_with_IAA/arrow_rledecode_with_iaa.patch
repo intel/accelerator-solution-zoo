@@ -1,0 +1,860 @@
+diff --git a/cpp/CMakeLists.txt b/cpp/CMakeLists.txt
+index e6d0ed4e8..c03c2d6c2 100644
+--- a/cpp/CMakeLists.txt
++++ b/cpp/CMakeLists.txt
+@@ -796,6 +796,14 @@ if(ARROW_USE_XSIMD)
+   list(APPEND ARROW_STATIC_LINK_LIBS xsimd)
+ endif()
+ 
++if(ARROW_WITH_QPL)
++  list(APPEND ARROW_STATIC_LINK_LIBS Qpl::qpl)
++  list(APPEND ARROW_SHARED_LINK_LIBS Qpl::qpl)
++  if(QPL_SOURCE STREQUAL "SYSTEM")
++    list(APPEND ARROW_STATIC_INSTALL_INTERFACE_LIBS Qpl::qpl)
++  endif()
++endif()
++
+ add_custom_target(arrow_dependencies)
+ add_custom_target(arrow_benchmark_dependencies)
+ add_custom_target(arrow_test_dependencies)
+diff --git a/cpp/build-support/qpl-tools-cmakefile.patch b/cpp/build-support/qpl-tools-cmakefile.patch
+new file mode 100644
+index 000000000..c91183ec6
+--- /dev/null
++++ b/cpp/build-support/qpl-tools-cmakefile.patch
+@@ -0,0 +1,30 @@
++# Licensed to the Apache Software Foundation (ASF) under one
++# or more contributor license agreements.  See the NOTICE file
++# distributed with this work for additional information
++# regarding copyright ownership.  The ASF licenses this file
++# to you under the Apache License, Version 2.0 (the
++# "License"); you may not use this file except in compliance
++# with the License.  You may obtain a copy of the License at
++#
++#   http://www.apache.org/licenses/LICENSE-2.0
++#
++# Unless required by applicable law or agreed to in writing,
++# software distributed under the License is distributed on an
++# "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
++# KIND, either express or implied.  See the License for the
++# specific language governing permissions and limitations
++# under the License.
++
++diff --git a/tools/CMakeLists.txt b/tools/CMakeLists.txt
++index 67efdf4..9df5e0a 100644
++--- a/tools/CMakeLists.txt
+++++ b/tools/CMakeLists.txt
++@@ -14,8 +14,6 @@ if (LIB_FUZZING_ENGINE)
++ else ()
++     add_subdirectory(ref)
++     add_subdirectory(utils)
++-    add_subdirectory(third-party/google-test EXCLUDE_FROM_ALL)
++-    add_subdirectory(tests)
++ endif ()
++ 
++ install(DIRECTORY ${CMAKE_CURRENT_LIST_DIR}/configs
+diff --git a/cpp/cmake_modules/DefineOptions.cmake b/cpp/cmake_modules/DefineOptions.cmake
+index 040a6f582..3cbfd8aba 100644
+--- a/cpp/cmake_modules/DefineOptions.cmake
++++ b/cpp/cmake_modules/DefineOptions.cmake
+@@ -523,6 +523,8 @@ takes precedence over ccache if a storage backend is configured" ON)
+   define_option(ARROW_WITH_ZLIB "Build with zlib compression" OFF)
+   define_option(ARROW_WITH_ZSTD "Build with zstd compression" OFF)
+ 
++  define_option(ARROW_WITH_QPL "Enable Intel® Query Processing Library" OFF)
++
+   define_option(ARROW_WITH_UCX
+                 "Build with UCX transport for Arrow Flight;(only used if ARROW_FLIGHT is ON)"
+                 OFF)
+diff --git a/cpp/cmake_modules/ThirdpartyToolchain.cmake b/cpp/cmake_modules/ThirdpartyToolchain.cmake
+index 364e631ce..e930a5d23 100644
+--- a/cpp/cmake_modules/ThirdpartyToolchain.cmake
++++ b/cpp/cmake_modules/ThirdpartyToolchain.cmake
+@@ -64,6 +64,7 @@ set(ARROW_THIRDPARTY_DEPENDENCIES
+     ORC
+     re2
+     Protobuf
++    Qpl
+     RapidJSON
+     Snappy
+     Substrait
+@@ -183,6 +184,8 @@ macro(build_dependency DEPENDENCY_NAME)
+     build_orc()
+   elseif("${DEPENDENCY_NAME}" STREQUAL "Protobuf")
+     build_protobuf()
++  elseif("${DEPENDENCY_NAME}" STREQUAL "Qpl")
++    build_qpl()
+   elseif("${DEPENDENCY_NAME}" STREQUAL "RapidJSON")
+     build_rapidjson()
+   elseif("${DEPENDENCY_NAME}" STREQUAL "re2")
+@@ -633,6 +636,14 @@ else()
+            "${THIRDPARTY_MIRROR_URL}/protobuf-${ARROW_PROTOBUF_BUILD_VERSION}.tar.gz")
+ endif()
+ 
++if(DEFINED ENV{ARROW_QPL_URL})
++  set(QPL_SOURCE_URL "$ENV{ARROW_QPL_URL}")
++else()
++  set_urls(QPL_SOURCE_URL
++           "https://github.com/intel/qpl/archive/refs/tags/${ARROW_QPL_BUILD_VERSION}.tar.gz"
++  )
++endif()
++
+ if(DEFINED ENV{ARROW_RE2_URL})
+   set(RE2_SOURCE_URL "$ENV{ARROW_RE2_URL}")
+ else()
+@@ -2203,6 +2214,51 @@ if(ARROW_WITH_RAPIDJSON)
+   endif()
+ endif()
+ 
++macro(build_qpl)
++  message(STATUS "Building QPL from source")
++  set(QPL_PREFIX "${CMAKE_CURRENT_BINARY_DIR}/qpl_ep/src/qpl_ep-install")
++  set(QPL_STATIC_LIB_NAME ${CMAKE_STATIC_LIBRARY_PREFIX}qpl${CMAKE_STATIC_LIBRARY_SUFFIX})
++  set(QPL_STATIC_LIB "${QPL_PREFIX}/lib/${QPL_STATIC_LIB_NAME}")
++  set(QPL_CMAKE_ARGS ${EP_COMMON_CMAKE_ARGS} -DCMAKE_INSTALL_LIBDIR=lib
++                     "-DCMAKE_INSTALL_PREFIX=${QPL_PREFIX}")
++  set(QPL_PATCH_COMMAND)
++  find_package(Patch)
++  if(Patch_FOUND)
++    # This patch is for Qpl <= v0.2.0
++    set(QPL_PATCH_COMMAND
++        ${Patch_EXECUTABLE}
++        "${CMAKE_CURRENT_BINARY_DIR}/qpl_ep-prefix/src/qpl_ep/tools/CMakeLists.txt"
++        "${CMAKE_SOURCE_DIR}/build-support/qpl-tools-cmakefile.patch")
++  endif()
++
++  externalproject_add(qpl_ep
++                      ${EP_LOG_OPTIONS}
++                      URL ${QPL_SOURCE_URL}
++                      URL_HASH "SHA256=${ARROW_QPL_BUILD_SHA256_CHECKSUM}"
++                      PATCH_COMMAND ${QPL_PATCH_COMMAND}
++                      BUILD_BYPRODUCTS "${QPL_STATIC_LIB}"
++                      CMAKE_ARGS ${QPL_CMAKE_ARGS})
++
++  file(MAKE_DIRECTORY "${QPL_PREFIX}/include")
++
++  add_library(Qpl::qpl STATIC IMPORTED)
++  set(QPL_LIBRARIES ${QPL_STATIC_LIB})
++  set(QPL_INCLUDE_DIRS "${QPL_PREFIX}/include")
++  set_target_properties(Qpl::qpl
++                        PROPERTIES IMPORTED_LOCATION ${QPL_LIBRARIES}
++                                   INTERFACE_INCLUDE_DIRECTORIES ${QPL_INCLUDE_DIRS})
++
++  add_dependencies(toolchain qpl_ep)
++  add_dependencies(Qpl::qpl qpl_ep)
++
++  list(APPEND ARROW_BUNDLED_STATIC_LIBS Qpl::qpl)
++  set(QPL_VENDORED TRUE)
++endmacro()
++
++if(ARROW_WITH_QPL)
++  resolve_dependency(Qpl PC_PACKAGE_NAMES qpl)
++endif()
++
+ macro(build_xsimd)
+   message(STATUS "Building xsimd from source")
+   set(XSIMD_PREFIX "${CMAKE_CURRENT_BINARY_DIR}/xsimd_ep/src/xsimd_ep-install")
+diff --git a/cpp/src/arrow/CMakeLists.txt b/cpp/src/arrow/CMakeLists.txt
+index 099a86237..7ee718208 100644
+--- a/cpp/src/arrow/CMakeLists.txt
++++ b/cpp/src/arrow/CMakeLists.txt
+@@ -216,6 +216,7 @@ set(ARROW_SRCS
+     util/key_value_metadata.cc
+     util/memory.cc
+     util/mutex.cc
++    util/qpl_job_pool.cc
+     util/string.cc
+     util/string_builder.cc
+     util/task_group.cc
+diff --git a/cpp/src/arrow/util/bit_stream_utils.h b/cpp/src/arrow/util/bit_stream_utils.h
+index 2f70c2865..b9c97af3b 100644
+--- a/cpp/src/arrow/util/bit_stream_utils.h
++++ b/cpp/src/arrow/util/bit_stream_utils.h
+@@ -28,6 +28,7 @@
+ #include "arrow/util/bpacking.h"
+ #include "arrow/util/logging.h"
+ #include "arrow/util/macros.h"
++#include "arrow/util/qpl_job_pool.h"
+ #include "arrow/util/ubsan.h"
+ 
+ namespace arrow {
+@@ -116,7 +117,11 @@ class BitReader {
+  public:
+   /// 'buffer' is the buffer to read from.  The buffer's length is 'buffer_len'.
+   BitReader(const uint8_t* buffer, int buffer_len)
+-      : buffer_(buffer), max_bytes_(buffer_len), byte_offset_(0), bit_offset_(0) {
++      : buffer_(buffer),
++        max_bytes_(buffer_len),
++        byte_offset_(0),
++        bit_offset_(0),
++        value_offset_(0) {
+     int num_bytes = std::min(8, max_bytes_ - byte_offset_);
+     memcpy(&buffered_values_, buffer_ + byte_offset_, num_bytes);
+     buffered_values_ = arrow::bit_util::FromLittleEndian(buffered_values_);
+@@ -137,6 +142,7 @@ class BitReader {
+     int num_bytes = std::min(8, max_bytes_ - byte_offset_);
+     memcpy(&buffered_values_, buffer_ + byte_offset_, num_bytes);
+     buffered_values_ = arrow::bit_util::FromLittleEndian(buffered_values_);
++    value_offset_ = 0;
+   }
+ 
+   /// Gets the next value from the buffer.  Returns true if 'v' could be read or false if
+@@ -148,6 +154,13 @@ class BitReader {
+   template <typename T>
+   int GetBatch(int num_bits, T* v, int batch_size);
+ 
++#ifdef ARROW_WITH_QPL
++  /// Get a number of values from the buffer by using Qpl.
++  /// The values actually read were stored in job pointer.
++  /// Return false if error happen, return ture if values were sucessfully read.
++  bool GetBatchWithQpl(int batch_size, qpl_job* job);
++#endif
++
+   /// Reads a 'num_bytes'-sized value from the buffer and stores it in 'v'. T
+   /// needs to be a little-endian native type and big enough to store
+   /// 'num_bytes'. The value is assumed to be byte-aligned so the stream will
+@@ -198,8 +211,9 @@ class BitReader {
+   /// faster than reading values byte by byte directly from buffer_.
+   uint64_t buffered_values_;
+ 
+-  int byte_offset_;  // Offset in buffer_
+-  int bit_offset_;   // Offset in buffered_values_
++  int byte_offset_;   // Offset in buffer_
++  int bit_offset_;    // Offset in buffered_values_
++  int value_offset_;  // Index of next value to read
+ };
+ 
+ inline bool BitWriter::PutValue(uint64_t v, int num_bits) {
+@@ -398,6 +412,27 @@ inline int BitReader::GetBatch(int num_bits, T* v, int batch_size) {
+   return batch_size;
+ }
+ 
++#ifdef ARROW_WITH_QPL
++inline bool BitReader::GetBatchWithQpl(int batch_size, qpl_job* job) {
++  if (!job) {
++    return false;
++  }
++  job->param_low = value_offset_;
++  job->param_high = batch_size + value_offset_;
++  job->num_input_elements = batch_size + value_offset_;
++
++  job->next_in_ptr = const_cast<uint8_t*>(buffer_ - 1);
++  job->available_in = max_bytes_ + 1;
++
++  qpl_status status = qpl_execute_job(job);
++  if (status != QPL_STS_OK) {
++    return false;
++  }
++  value_offset_ += batch_size;
++  return true;
++}
++#endif
++
+ template <typename T>
+ inline bool BitReader::GetAligned(int num_bytes, T* v) {
+   if (ARROW_PREDICT_FALSE(num_bytes > static_cast<int>(sizeof(T)))) {
+diff --git a/cpp/src/arrow/util/config.h.cmake b/cpp/src/arrow/util/config.h.cmake
+index f6fad2016..df51b6536 100644
+--- a/cpp/src/arrow/util/config.h.cmake
++++ b/cpp/src/arrow/util/config.h.cmake
+@@ -50,6 +50,7 @@
+ #cmakedefine ARROW_ORC
+ #cmakedefine ARROW_PARQUET
+ #cmakedefine ARROW_SUBSTRAIT
++#cmakedefine ARROW_WITH_QPL
+ 
+ #cmakedefine ARROW_GCS
+ #cmakedefine ARROW_S3
+diff --git a/cpp/src/arrow/util/qpl_job_pool.cc b/cpp/src/arrow/util/qpl_job_pool.cc
+new file mode 100644
+index 000000000..b5daec89c
+--- /dev/null
++++ b/cpp/src/arrow/util/qpl_job_pool.cc
+@@ -0,0 +1,122 @@
++// Licensed to the Apache Software Foundation (ASF) under one
++// or more contributor license agreements.  See the NOTICE file
++// distributed with this work for additional information
++// regarding copyright ownership.  The ASF licenses this file
++// to you under the Apache License, Version 2.0 (the
++// "License"); you may not use this file except in compliance
++// with the License.  You may obtain a copy of the License at
++//
++//   http://www.apache.org/licenses/LICENSE-2.0
++//
++// Unless required by applicable law or agreed to in writing,
++// software distributed under the License is distributed on an
++// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
++// KIND, either express or implied.  See the License for the
++// specific language governing permissions and limitations
++// under the License.
++
++#include "arrow/util/qpl_job_pool.h"
++#include "arrow/status.h"
++
++#ifdef ARROW_WITH_QPL
++
++namespace arrow {
++namespace util {
++namespace internal {
++
++std::array<qpl_job*, QplJobHWPool::MAX_JOB_NUMBER> QplJobHWPool::hw_job_ptr_pool;
++std::array<std::atomic_bool, QplJobHWPool::MAX_JOB_NUMBER> QplJobHWPool::job_ptr_locks;
++bool QplJobHWPool::iaa_job_ready = false;
++std::unique_ptr<uint8_t[]> QplJobHWPool::hw_jobs_buffer;
++
++QplJobHWPool& QplJobHWPool::GetInstance() {
++  static QplJobHWPool pool;
++  return pool;
++}
++
++QplJobHWPool::QplJobHWPool()
++    : random_engine(std::random_device()()), distribution(0, MAX_JOB_NUMBER - 1) {
++  (void)AllocateQPLJob();
++}
++
++QplJobHWPool::~QplJobHWPool() {
++  for (uint32_t i = 0; i < MAX_JOB_NUMBER; ++i) {
++    if (hw_job_ptr_pool[i]) {
++      qpl_fini_job(hw_job_ptr_pool[i]);
++      hw_job_ptr_pool[i] = nullptr;
++    }
++  }
++  iaa_job_ready = false;
++}
++
++arrow::Status QplJobHWPool::AllocateQPLJob() {
++  uint32_t job_size = 0;
++
++  /// Get size required for saving a single qpl job object
++  qpl_get_job_size(qpl_path_hardware, &job_size);
++  /// Allocate entire buffer for storing all job objects
++  hw_jobs_buffer = std::make_unique<uint8_t[]>(job_size * MAX_JOB_NUMBER);
++  /// Initialize pool for storing all job object pointers
++  /// Reallocate buffer by shifting address offset for each job object.
++  for (uint32_t index = 0; index < MAX_JOB_NUMBER; ++index) {
++    qpl_job* qpl_job_ptr =
++        reinterpret_cast<qpl_job*>(hw_jobs_buffer.get() + index * job_size);
++    if (qpl_init_job(qpl_path_hardware, qpl_job_ptr) != QPL_STS_OK) {
++      iaa_job_ready = false;
++      return arrow::Status::Invalid(
++          "Initialization of hardware IAA failed."
++          " Please check if Intel In-Memory Analytics Accelerator (IAA) "
++          "is properly set up!");
++    }
++    hw_job_ptr_pool[index] = qpl_job_ptr;
++    job_ptr_locks[index].store(false);
++  }
++
++  iaa_job_ready = true;
++  return arrow::Status::OK();
++}
++
++qpl_job* QplJobHWPool::AcquireJob(uint32_t& job_id) {
++  if (!job_ready()) {
++    return nullptr;
++  }
++  uint32_t retry = 0;
++  auto index = distribution(random_engine);
++  while (!tryLockJob(index)) {
++    index = distribution(random_engine);
++    retry++;
++    if (retry > MAX_JOB_NUMBER) {
++      return nullptr;
++    }
++  }
++  job_id = MAX_JOB_NUMBER - index;
++  if (index >= MAX_JOB_NUMBER) {
++    return nullptr;
++  }
++  return hw_job_ptr_pool[index];
++}
++
++void QplJobHWPool::ReleaseJob(uint32_t job_id) {
++  if (job_ready()) {
++    job_ptr_locks[MAX_JOB_NUMBER - job_id].store(false);
++  }
++}
++
++bool QplJobHWPool::tryLockJob(uint32_t index) {
++  bool expected = false;
++  if (index >= MAX_JOB_NUMBER) {
++    return false;
++  }
++  return job_ptr_locks[index].compare_exchange_strong(expected, true);
++}
++
++void QplJobHWPool::unLockJob(uint32_t index) {
++  if (index >= MAX_JOB_NUMBER) {
++    return;
++  }
++  job_ptr_locks[index].store(false);
++}
++}  // namespace internal
++}  // namespace util
++}  // namespace arrow
++#endif
+diff --git a/cpp/src/arrow/util/qpl_job_pool.h b/cpp/src/arrow/util/qpl_job_pool.h
+new file mode 100644
+index 000000000..f04fa1c9d
+--- /dev/null
++++ b/cpp/src/arrow/util/qpl_job_pool.h
+@@ -0,0 +1,79 @@
++// Licensed to the Apache Software Foundation (ASF) under one
++// or more contributor license agreements.  See the NOTICE file
++// distributed with this work for additional information
++// regarding copyright ownership.  The ASF licenses this file
++// to you under the Apache License, Version 2.0 (the
++// "License"); you may not use this file except in compliance
++// with the License.  You may obtain a copy of the License at
++//
++//   http://www.apache.org/licenses/LICENSE-2.0
++//
++// Unless required by applicable law or agreed to in writing,
++// software distributed under the License is distributed on an
++// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
++// KIND, either express or implied.  See the License for the
++// specific language governing permissions and limitations
++// under the License.
++
++#pragma once
++
++#include <cstdint>
++#include <memory>
++#include <random>
++#include <utility>
++#include <vector>
++#include "arrow/config.h"
++#include "arrow/status.h"
++
++#ifdef ARROW_WITH_QPL
++#include "qpl/qpl.h"
++#include "qpl/qpl.hpp"
++
++namespace arrow {
++namespace util {
++namespace internal {
++
++/// QplJobHWPool is resource pool to provide the job objects, which is
++/// used for storing context information during.
++/// Memory for QPL job will be allocated when the QPLJobHWPool instance is created
++///
++//  QPL job can offload RLE-decoding/Filter/(De)compression works to hardware accelerator.
++class QplJobHWPool {
++ public:
++  static QplJobHWPool& GetInstance();
++
++  /// Acquire QPL job
++  ///
++  /// @param job_id QPL job id, used when release QPL job
++  /// \return Pointer to the QPL job. If acquire job failed, return nullptr.
++  qpl_job* AcquireJob(uint32_t& job_id);
++
++  /// \brief Release QPL job by the job_id.
++  void ReleaseJob(uint32_t job_id);
++
++  /// \brief Return if the QPL job is allocated sucessfully.
++  const bool& job_ready() { return iaa_job_ready; }
++
++ private:
++  QplJobHWPool();
++  ~QplJobHWPool();
++  bool tryLockJob(uint32_t index);
++  void unLockJob(uint32_t index);
++  arrow::Status AllocateQPLJob();
++
++  /// Max jobs in QPL_JOB_POOL
++  static constexpr auto MAX_JOB_NUMBER = 512;
++  /// Entire buffer for storing all job objects
++  static std::unique_ptr<uint8_t[]> hw_jobs_buffer;
++  /// Job pool for storing all job object pointers
++  static std::array<qpl_job*, MAX_JOB_NUMBER> hw_job_ptr_pool;
++  /// Locks for accessing each job object pointers
++  static std::array<std::atomic_bool, MAX_JOB_NUMBER> job_ptr_locks;
++  static bool iaa_job_ready;
++  std::mt19937 random_engine;
++  std::uniform_int_distribution<int> distribution;
++};
++}  //  namespace internal
++}  //  namespace util
++}  //  namespace arrow
++#endif
+diff --git a/cpp/src/arrow/util/rle_encoding.h b/cpp/src/arrow/util/rle_encoding.h
+index cc90f658f..03c266946 100644
+--- a/cpp/src/arrow/util/rle_encoding.h
++++ b/cpp/src/arrow/util/rle_encoding.h
+@@ -30,6 +30,7 @@
+ #include "arrow/util/bit_stream_utils.h"
+ #include "arrow/util/bit_util.h"
+ #include "arrow/util/macros.h"
++#include "arrow/util/qpl_job_pool.h"
+ 
+ namespace arrow {
+ namespace util {
+@@ -129,6 +130,12 @@ class RleDecoder {
+   int GetBatchWithDict(const T* dictionary, int32_t dictionary_length, T* values,
+                        int batch_size);
+ 
++#ifdef ARROW_WITH_QPL
++  template <typename T>
++  int GetBatchWithDictIAA(const T* dictionary, int32_t dictionary_length, T* values,
++                          int batch_size);
++#endif
++
+   /// Like GetBatchWithDict but add spacing for null entries
+   ///
+   /// Null entries will be zero-initialized in `values` to avoid leaking
+@@ -598,6 +605,73 @@ inline int RleDecoder::GetBatchWithDict(const T* dictionary, int32_t dictionary_
+   return values_read;
+ }
+ 
++#ifdef ARROW_WITH_QPL
++template <typename T, typename V>
++inline void CopyValues(const T* dictionary, const std::vector<uint8_t>& destination,
++                       T* values, int batch_size) {
++  auto* out = values;
++  auto* indices = reinterpret_cast<const V*>(destination.data());
++  for (int j = 0; j < batch_size; j++) {
++    auto idx = indices[j];
++    T val = dictionary[idx];
++    std::fill(out, out + 1, val);
++    out++;
++  }
++  return;
++}
++
++template <typename T>
++inline int RleDecoder::GetBatchWithDictIAA(const T* dictionary, int32_t dictionary_length,
++                                           T* values, int batch_size) {
++  if (batch_size <= 0) {
++    return batch_size;
++  }
++  if (!::arrow::util::internal::QplJobHWPool::GetInstance().job_ready() ||
++      bit_width_ <= 1) {
++    return GetBatchWithDict(dictionary, dictionary_length, values, batch_size);
++  }
++  uint32_t job_id = 0;
++  auto* job = ::arrow::util::internal::QplJobHWPool::GetInstance().AcquireJob(job_id);
++  if (!job) {
++    return -1;
++  }
++
++  std::vector<uint8_t> destination;
++  if (dictionary_length < 0xFF) {
++    job->out_bit_width = qpl_ow_8;
++    destination.resize(batch_size, 0);
++  } else if (dictionary_length < 0xFFFF) {
++    job->out_bit_width = qpl_ow_16;
++    destination.resize(batch_size * 2, 0);
++  } else {
++    job->out_bit_width = qpl_ow_32;
++    destination.resize(batch_size * 4, 0);
++  }
++
++  job->op = qpl_op_extract;
++  job->src1_bit_width = bit_width_;
++  job->parser = qpl_p_parquet_rle;
++  job->next_out_ptr = destination.data();
++  job->available_out = static_cast<uint32_t>(destination.size());
++
++  if (!bit_reader_.GetBatchWithQpl(batch_size, job)) {
++    return -1;
++  }
++
++  if (destination.size() / batch_size == qpl_ow_8) {
++    CopyValues<T, uint8_t>(dictionary, destination, values, batch_size);
++  } else if (destination.size() / batch_size == qpl_ow_16) {
++    CopyValues<T, uint16_t>(dictionary, destination, values, batch_size);
++  } else {
++    CopyValues<T, uint32_t>(dictionary, destination, values, batch_size);
++  }
++
++  (void)qpl_fini_job(job);
++  ::arrow::util::internal::QplJobHWPool::GetInstance().ReleaseJob(job_id);
++  return batch_size;
++}
++#endif
++
+ template <typename T>
+ inline int RleDecoder::GetBatchWithDictSpaced(const T* dictionary,
+                                               int32_t dictionary_length, T* out,
+diff --git a/cpp/src/parquet/CMakeLists.txt b/cpp/src/parquet/CMakeLists.txt
+index dc55ab158..a2d189ce0 100644
+--- a/cpp/src/parquet/CMakeLists.txt
++++ b/cpp/src/parquet/CMakeLists.txt
+@@ -389,6 +389,7 @@ add_parquet_benchmark(column_io_benchmark)
+ add_parquet_benchmark(encoding_benchmark)
+ add_parquet_benchmark(level_conversion_benchmark)
+ add_parquet_benchmark(arrow/reader_writer_benchmark PREFIX "parquet-arrow")
++add_parquet_benchmark(arrow/qpl_reader_benchmark)
+ 
+ if(ARROW_WITH_BROTLI)
+   add_definitions(-DARROW_WITH_BROTLI)
+diff --git a/cpp/src/parquet/arrow/qpl_reader_benchmark.cc b/cpp/src/parquet/arrow/qpl_reader_benchmark.cc
+new file mode 100644
+index 000000000..ef4b827e2
+--- /dev/null
++++ b/cpp/src/parquet/arrow/qpl_reader_benchmark.cc
+@@ -0,0 +1,224 @@
++// Licensed to the Apache Software Foundation (ASF) under one
++// or more contributor license agreements.  See the NOTICE file
++// distributed with this work for additional information
++// regarding copyright ownership.  The ASF licenses this file
++// to you under the Apache License, Version 2.0 (the
++// "License"); you may not use this file except in compliance
++// with the License.  You may obtain a copy of the License at
++//
++//   http://www.apache.org/licenses/LICENSE-2.0
++//
++// Unless required by applicable law or agreed to in writing,
++// software distributed under the License is distributed on an
++// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
++// KIND, either express or implied.  See the License for the
++// specific language governing permissions and limitations
++// under the License.
++
++#include "benchmark/benchmark.h"
++
++#include <vector>
++
++#include "arrow/io/api.h"
++#include "arrow/table.h"
++#include "arrow/testing/util.h"
++#include "arrow/util/config.h"  // for ARROW_CSV definition
++
++#ifdef ARROW_CSV
++#include "arrow/csv/api.h"
++#endif
++
++#include "parquet/arrow/reader.h"
++#include "parquet/arrow/test_util.h"
++
++#include "arrow/io/memory.h"
++#include "arrow/testing/gtest_util.h"
++
++using arrow::DataType;
++using arrow::Status;
++using arrow::Table;
++
++#define EXIT_NOT_OK(s)                                        \
++  do {                                                        \
++    ::arrow::Status _s = (s);                                 \
++    if (ARROW_PREDICT_FALSE(!_s.ok())) {                      \
++      std::cout << "Exiting: " << _s.ToString() << std::endl; \
++      exit(EXIT_FAILURE);                                     \
++    }                                                         \
++  } while (0)
++
++namespace arrow {
++
++class ParquetTestException : public parquet::ParquetException {
++  using ParquetException::ParquetException;
++};
++
++const char* get_data_dir() {
++  const auto result = std::getenv("PARQUET_TEST_DATA");
++  if (!result || !result[0]) {
++    throw ParquetTestException(
++        "Please point the PARQUET_TEST_DATA environment "
++        "variable to the test data directory");
++  }
++  return result;
++}
++
++std::string get_data_file(const std::string& filename) {
++  std::stringstream ss;
++
++  ss << get_data_dir();
++  ss << "/" << filename;
++  return ss.str();
++}
++
++// This should result in multiple pages for most primitive types
++constexpr int64_t BENCHMARK_SIZE = 10 * 1024 * 1024;
++
++static size_t countIndicesForType(std::shared_ptr<arrow::DataType> type) {
++  if (type->id() == arrow::Type::LIST) {
++    return countIndicesForType(static_cast<arrow::ListType*>(type.get())->value_type());
++  }
++
++  if (type->id() == arrow::Type::STRUCT) {
++    int indices = 0;
++    auto* struct_type = static_cast<arrow::StructType*>(type.get());
++    for (int i = 0; i != struct_type->num_fields(); ++i)
++      indices = countIndicesForType(struct_type->field(i)->type());
++    return indices;
++  }
++
++  if (type->id() == arrow::Type::MAP) {
++    auto* map_type = static_cast<arrow::MapType*>(type.get());
++    return countIndicesForType(map_type->key_type()) +
++           countIndicesForType(map_type->item_type());
++  }
++
++  return 1;
++}
++
++static void getFileReaderAndSchema(
++    const std::string& file_name,
++    std::unique_ptr<parquet::arrow::FileReader>& file_reader,
++    std::shared_ptr<arrow::Schema>& schema) {
++  auto file = get_data_file(file_name);
++  std::shared_ptr<arrow::io::ReadableFile> infile;
++  PARQUET_ASSIGN_OR_THROW(
++      infile, arrow::io::ReadableFile::Open(file, arrow::default_memory_pool()));
++  EXIT_NOT_OK(parquet::arrow::OpenFile(std::move(infile), arrow::default_memory_pool(),
++                                       &file_reader));
++  EXIT_NOT_OK(file_reader->GetSchema(&schema));
++}
++
++class ParquetRowGroupReader {
++ public:
++  ParquetRowGroupReader() {}
++
++  void read(const std::string& filename) {
++    if (!file_reader) prepareReader(filename);
++
++    size_t parallel = 5;
++    while (row_group_current < row_group_total) {
++      std::vector<int> row_group_indexes;
++      for (; row_group_current < row_group_total && row_group_indexes.size() < parallel;
++           ++row_group_current) {
++        row_group_indexes.push_back(row_group_current);
++      }
++
++      if (row_group_indexes.empty()) {
++        return;
++      }
++      std::shared_ptr<arrow::Table> table;
++      arrow::Status read_status =
++          file_reader->ReadRowGroups(row_group_indexes, column_indices, &table);
++      ASSERT_OK(read_status);
++    }
++    return;
++  }
++
++  void prepareReader(const std::string& filename) {
++    std::shared_ptr<arrow::Schema> schema;
++    getFileReaderAndSchema(filename, file_reader, schema);
++
++    row_group_total = file_reader->num_row_groups();
++    row_group_current = 0;
++
++    int index = 0;
++    for (int i = 0; i < schema->num_fields(); ++i) {
++      /// STRUCT type require the number of indexes equal to the number of
++      /// nested elements, so we should recursively
++      /// count the number of indices we need for this type.
++      int indexes_count = countIndicesForType(schema->field(i)->type());
++
++      for (int j = 0; j != indexes_count; ++j) column_indices.push_back(index + j);
++      index += indexes_count;
++    }
++  }
++
++  std::unique_ptr<parquet::arrow::FileReader> file_reader;
++  int row_group_total = 0;
++  int row_group_current = 0;
++  // indices of columns to read from Parquet file
++  std::vector<int> column_indices;
++};
++
++template <uint32_t rows, uint32_t row_group>
++void SetBytesProcessed(::benchmark::State& state, int64_t num_values = BENCHMARK_SIZE) {
++  const int64_t items_processed = state.iterations() * num_values;
++  const int64_t bytes_processed = items_processed * sizeof(rows);
++
++  state.SetItemsProcessed(bytes_processed);
++  state.SetBytesProcessed(bytes_processed);
++}
++
++template <uint32_t rows, uint32_t row_group>
++static void BM_ReadFile(::benchmark::State& state) {
++  while (state.KeepRunning()) {
++    ParquetRowGroupReader reader;
++    std::string file_name = "single_column_" + std::to_string(state.range(0)) + "kw_" +
++                            std::to_string(state.range(1)) + ".parquet";
++    reader.read(file_name);
++  }
++
++  SetBytesProcessed<rows, row_group>(state);
++}
++
++template <uint32_t rows, uint32_t bit_width>
++static void BM_ReadFileDiffBitWidth(::benchmark::State& state) {
++  while (state.KeepRunning()) {
++    ParquetRowGroupReader reader;
++    std::string file_name = "sc_" + std::to_string(state.range(0)) + "kw_multibit_" +
++                            std::to_string(state.range(1)) + ".parquet";
++    reader.read(file_name);
++  }
++
++  SetBytesProcessed<bit_width, bit_width>(state);
++}
++
++// There are two parameters here that cover different data distributions.
++// null_percentage governs distribution and therefore runs of null values.
++// first_value_percentage governs distribution of values (we select from 1 of 2)
++// so when 0 or 100 RLE is triggered all the time.  When a value in the range (0, 100)
++// there will be some percentage of RLE encoded values and some percentage of literal
++// encoded values (RLE is much less likely with percentages close to 50).
++BENCHMARK_TEMPLATE2(BM_ReadFile, 1, 64)
++    ->Args({1, 64})
++    ->Args({2, 64})
++    ->Args({3, 64})
++    ->Args({1, 512})
++    ->Args({2, 512})
++    ->Args({3, 512});
++
++BENCHMARK_TEMPLATE2(BM_ReadFileDiffBitWidth, 1, 2)
++    ->Args({1, 3})
++    ->Args({1, 5})
++    ->Args({1, 6})
++    ->Args({1, 8})
++    ->Args({1, 9})
++    ->Args({1, 10})
++    ->Args({1, 11})
++    ->Args({1, 12})
++    ->Args({1, 13})
++    ->Args({1, 14})
++    ->Args({1, 16})
++    ->Args({1, 18});
++}  // namespace arrow
+diff --git a/cpp/src/parquet/encoding.cc b/cpp/src/parquet/encoding.cc
+index 44f762d71..766b8fb5b 100644
+--- a/cpp/src/parquet/encoding.cc
++++ b/cpp/src/parquet/encoding.cc
+@@ -1494,8 +1494,13 @@ class DictDecoderImpl : public DecoderImpl, virtual public DictDecoder<Type> {
+   int Decode(T* buffer, int num_values) override {
+     num_values = std::min(num_values, num_values_);
+     int decoded_values =
++#ifdef ARROW_WITH_QPL
++        idx_decoder_.GetBatchWithDictIAA(reinterpret_cast<const T*>(dictionary_->data()),
++                                         dictionary_length_, buffer, num_values);
++#else
+         idx_decoder_.GetBatchWithDict(reinterpret_cast<const T*>(dictionary_->data()),
+                                       dictionary_length_, buffer, num_values);
++#endif
+     if (decoded_values != num_values) {
+       ParquetException::EofException();
+     }
+diff --git a/cpp/thirdparty/versions.txt b/cpp/thirdparty/versions.txt
+index 0cc496e93..c1ba1c220 100644
+--- a/cpp/thirdparty/versions.txt
++++ b/cpp/thirdparty/versions.txt
+@@ -76,6 +76,8 @@ ARROW_PROTOBUF_BUILD_SHA256_CHECKSUM=2f723218f6cb709ae4cdc4fb5ed56a5951fc5d466f0
+ # warnings.
+ ARROW_RAPIDJSON_BUILD_VERSION=232389d4f1012dddec4ef84861face2d2ba85709
+ ARROW_RAPIDJSON_BUILD_SHA256_CHECKSUM=b9290a9a6d444c8e049bd589ab804e0ccf2b05dc5984a19ed5ae75d090064806
++ARROW_QPL_BUILD_VERSION=v0.2.1
++ARROW_QPL_BUILD_SHA256_CHECKSUM=129c1c8754139ea9a7b92f4c92b9d3d09068a32b03b8c0dd551379574b0e970d
+ ARROW_RE2_BUILD_VERSION=2022-06-01
+ ARROW_RE2_BUILD_SHA256_CHECKSUM=f89c61410a072e5cbcf8c27e3a778da7d6fd2f2b5b1445cd4f4508bee946ab0f
+ # 1.1.9 is patched to implement https://github.com/google/snappy/pull/148 if this is bumped, remove the patch
+@@ -126,6 +128,7 @@ DEPENDENCIES=(
+   "ARROW_OPENTELEMETRY_PROTO_URL opentelemetry-proto-${ARROW_OPENTELEMETRY_PROTO_BUILD_VERSION}.tar.gz https://github.com/open-telemetry/opentelemetry-proto/archive/refs/tags/${ARROW_OPENTELEMETRY_PROTO_BUILD_VERSION}.tar.gz"
+   "ARROW_ORC_URL orc-${ARROW_ORC_BUILD_VERSION}.tar.gz https://archive.apache.org/dist/orc/orc-${ARROW_ORC_BUILD_VERSION}/orc-${ARROW_ORC_BUILD_VERSION}.tar.gz"
+   "ARROW_PROTOBUF_URL protobuf-${ARROW_PROTOBUF_BUILD_VERSION}.tar.gz https://github.com/google/protobuf/releases/download/${ARROW_PROTOBUF_BUILD_VERSION}/protobuf-all-${ARROW_PROTOBUF_BUILD_VERSION:1}.tar.gz"
++  "ARROW_QPL_URL qpl-${ARROW_QPL_BUILD_VERSION}.tar.gz https://github.com/intel/qpl/archive/refs/tags/${ARROW_QPL_BUILD_VERSION}.tar.gz"
+   "ARROW_RAPIDJSON_URL rapidjson-${ARROW_RAPIDJSON_BUILD_VERSION}.tar.gz https://github.com/miloyip/rapidjson/archive/${ARROW_RAPIDJSON_BUILD_VERSION}.tar.gz"
+   "ARROW_RE2_URL re2-${ARROW_RE2_BUILD_VERSION}.tar.gz https://github.com/google/re2/archive/${ARROW_RE2_BUILD_VERSION}.tar.gz"
+   "ARROW_SNAPPY_URL snappy-${ARROW_SNAPPY_BUILD_VERSION}.tar.gz https://github.com/google/snappy/archive/${ARROW_SNAPPY_BUILD_VERSION}.tar.gz"
