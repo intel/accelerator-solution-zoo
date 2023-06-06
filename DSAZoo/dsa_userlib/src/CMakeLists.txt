@@ -12,5 +12,5 @@ add_library (${PROJECT_NAME} SHARED ${LIB_SRCS} )
 set(STATIC_LIB "vector_data_streaming_static")
 add_library (${STATIC_LIB} STATIC ${LIB_SRCS} )
 
-target_link_libraries(${PROJECT_NAME} PUBLIC accel-config kmod)
+target_link_libraries(${PROJECT_NAME} PUBLIC accel-config)
 
