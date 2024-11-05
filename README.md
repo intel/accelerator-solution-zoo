@@ -1,3 +1,14 @@
+PROJECT NOT UNDER ACTIVE MANAGEMENT
+
+This project will no longer be maintained by Intel.
+
+Intel has ceased development and contributions including, but not limited to, maintenance, bug fixes, new releases, or updates, to this project.  
+
+Intel no longer accepts patches to this project.
+
+If you have an ongoing need to use this project, are interested in independently developing it, or would like to maintain patches for the open source software community, please create your own fork of this project.  
+
+Contact: webadmin@linux.intel.com
 # Intel® Vector Data Streaming Library
 ![](intel-accelerator-zoo.jpeg)
 Intel Vector Data Streaming Library is a zoo of solutions based on accelerators in the die of Intel 4th Xeon Scalable processor,code-named [“Sapphire Rapids”](https://www.intel.com/content/www/us/en/newsroom/opinion/updates-next-gen-data-center-platform-sapphire-rapids.html?wapkw=Intel%20Sapphire%20Rapids%20Demos%20At%20Innovation%202022#gs.g4fsrh). Intel provide a boundle of powerful accelerators for different scenarios as below table.
